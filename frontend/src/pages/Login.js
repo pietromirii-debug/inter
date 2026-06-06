@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import api from '../api/axios';
+import axios from 'axios';
 import './Auth.css';
 
 function Login({ onLogin }) {
@@ -16,20 +16,14 @@ function Login({ onLogin }) {
     setLoading(true);
 
     try {
-      const response = await api.post('/login', { username, password });
-      const token = response.data.access_token;
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const jsonPayload = decodeURIComponent(atob(base64).split('').map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-      const userData = JSON.parse(jsonPayload);
-
-      onLogin(token, {
-        user_id: userData.sub,
-        username: userData.username,
-        user_type: userData.user_type,
+      const response = await axios.post('http://localhost:5000/login', {
+        username,
+        password,
       });
 
-      navigate('/');
+      const { access_token, user_type, username: uname } = response.data;
+      onLogin(access_token, { username: uname, user_type });
+      navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.msg || 'Login failed. Please try again.');
     } finally {
@@ -39,22 +33,38 @@ function Login({ onLogin }) {
 
   return (
     <div className="auth-container">
-      <div className="auth-card">
-        <h1>🌊 Hydrological Dashboard</h1>
+      <div className="auth-box">
+        <h1>💧 Hydro Manager</h1>
         <h2>Login</h2>
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && <div className="auth-error">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Username</label>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} required placeholder="Enter your username" />
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              disabled={loading}
+            />
           </div>
           <div className="form-group">
             <label>Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Enter your password" />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={loading}
+            />
           </div>
-          <button type="submit" className="btn btn-primary btn-full" disabled={loading}>{loading ? 'Logging in...' : 'Login'}</button>
+          <button type="submit" disabled={loading} className="auth-btn">
+            {loading ? 'Logging in...' : 'Login'}
+          </button>
         </form>
-        <div className="auth-footer"><p>Don't have an account? <Link to="/register">Register here</Link></p></div>
+        <p className="auth-link">
+          Don't have an account? <Link to="/register">Register here</Link>
+        </p>
       </div>
     </div>
   );

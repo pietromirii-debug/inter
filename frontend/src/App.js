@@ -1,17 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import './App.css';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Stations from './pages/Stations';
-import StationDetail from './pages/StationDetail';
-import HydrologicalData from './pages/HydrologicalData';
-import HydrologicalDetail from './pages/HydrologicalDetail';
-import AdminBulkUpload from './pages/AdminBulkUpload';
-import UserManagement from './pages/UserManagement';
+import Prediction from './pages/Prediction';
 import Navigation from './components/Navigation';
-import PrivateRoute from './components/PrivateRoute';
-import './App.css';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -42,24 +37,52 @@ function App() {
     setUser(null);
   };
 
+  const ProtectedRoute = ({ children }) => {
+    return isAuthenticated ? children : <Navigate to="/login" replace />;
+  };
+
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
 
   return (
     <Router>
-      {isAuthenticated && <Navigation user={user} onLogout={handleLogout} />}
-      <div className="app-container">
+      <div className="App">
+        {isAuthenticated && <Navigation user={user} onLogout={handleLogout} />}
         <Routes>
-          <Route path="/login" element={<Login onLogin={handleLogin} />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/" element={isAuthenticated ? <Dashboard user={user} /> : <Navigate to="/login" />} />
-          <Route path="/stations" element={<PrivateRoute isAuthenticated={isAuthenticated}><Stations /></PrivateRoute>} />
-          <Route path="/stations/:id" element={<PrivateRoute isAuthenticated={isAuthenticated}><StationDetail /></PrivateRoute>} />
-          <Route path="/hydrological" element={<PrivateRoute isAuthenticated={isAuthenticated}><HydrologicalData /></PrivateRoute>} />
-          <Route path="/hydrological/:id" element={<PrivateRoute isAuthenticated={isAuthenticated}><HydrologicalDetail /></PrivateRoute>} />
-          <Route path="/admin/bulk-upload" element={<PrivateRoute isAuthenticated={isAuthenticated} requiredRole="Admin"><AdminBulkUpload /></PrivateRoute>} />
-          <Route path="/manager/users" element={<PrivateRoute isAuthenticated={isAuthenticated} requiredRole={['Admin', 'Manager']}><UserManagement /></PrivateRoute>} />
+          <Route
+            path="/login"
+            element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login onLogin={handleLogin} />}
+          />
+          <Route
+            path="/register"
+            element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Register />}
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/stations"
+            element={
+              <ProtectedRoute>
+                <Stations />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/predict"
+            element={
+              <ProtectedRoute>
+                <Prediction />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </div>
     </Router>

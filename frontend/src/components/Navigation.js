@@ -12,18 +12,33 @@ function Navigation({ user, onLogout }) {
 
   return (
     <nav className="navbar">
-      <div className="navbar-container">
-        <Link to="/" className="navbar-brand">🌊 Hydrological Dashboard</Link>
-        <ul className="navbar-menu">
-          <li><Link to="/stations" className="nav-link">Stations</Link></li>
-          <li><Link to="/hydrological" className="nav-link">Hydrological Data</Link></li>
-          {user?.user_type === 'Admin' && <li><Link to="/admin/bulk-upload" className="nav-link">Admin - Bulk Upload</Link></li>}
-          {(user?.user_type === 'Admin' || user?.user_type === 'Manager') && <li><Link to="/manager/users" className="nav-link">User Management</Link></li>}
-          <li className="navbar-user">
-            <span className="user-info">{user?.username} <span className="badge">{user?.user_type}</span></span>
-            <button className="btn-logout" onClick={handleLogout}>Logout</button>
+      <div className="nav-container">
+        <Link to="/dashboard" className="nav-logo">
+          💧 Hydro Manager
+        </Link>
+        <ul className="nav-menu">
+          <li className="nav-item">
+            <Link to="/dashboard" className="nav-link">
+              Dashboard
+            </Link>
+          </li>
+          <li className="nav-item">
+            <Link to="/stations" className="nav-link">
+              Stations Map
+            </Link>
+          </li>
+          <li className="nav-item">
+            <Link to="/predict" className="nav-link">
+              Prediction
+            </Link>
           </li>
         </ul>
+        <div className="nav-user">
+          <span className="user-info">{user?.username}</span>
+          <button onClick={handleLogout} className="logout-btn">
+            Logout
+          </button>
+        </div>
       </div>
     </nav>
   );

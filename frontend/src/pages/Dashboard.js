@@ -1,61 +1,104 @@
 import React, { useState, useEffect } from 'react';
-import api from '../api/axios';
+import axios from 'axios';
 import './Dashboard.css';
 
-function Dashboard({ user }) {
-  const [stats, setStats] = useState({ totalStations: 0, totalRecords: 0, totalUsers: 0 });
+function Dashboard() {
+  const [stats, setStats] = useState({
+    totalStations: 0,
+    totalRecords: 0,
+    averageWaterLevel: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchStats();
+    fetchDashboardData();
   }, []);
 
-  const fetchStats = async () => {
+  const fetchDashboardData = async () => {
     try {
-      const [stationsRes, hydrologicalRes, usersRes] = await Promise.all([
-        api.get('/stations'),
-        api.get('/hydrological'),
-        user?.user_type === 'Admin' || user?.user_type === 'Manager' ? api.get('/manager/users') : Promise.resolve({ data: [] }),
+      const token = localStorage.getItem('access_token');
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const [stationsRes, hydrologicalRes] = await Promise.all([
+        axios.get('http://localhost:5000/stations', { headers }),
+        axios.get('http://localhost:5000/hydrological', { headers }),
       ]);
+
+      const totalStations = stationsRes.data.length;
+      const totalRecords = hydrologicalRes.data.length;
+      const avgWaterLevel =
+        totalRecords > 0
+          ? (
+              hydrologicalRes.data.reduce((sum, r) => sum + (r.ReservoirWaterLevel || 0), 0) /
+              totalRecords
+            ).toFixed(2)
+          : 0;
+
       setStats({
-        totalStations: stationsRes.data.length,
-        totalRecords: hydrologicalRes.data.length,
-        totalUsers: usersRes.data.length,
+        totalStations,
+        totalRecords,
+        averageWaterLevel: avgWaterLevel,
       });
     } catch (err) {
-      setError('Failed to load statistics');
+      setError('Failed to load dashboard data');
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
+  if (loading) return <div className="loading">Loading dashboard...</div>;
+
   return (
     <div className="container">
-      <div className="dashboard-header">
-        <h1>Welcome, {user?.username}!</h1>
-        <p className="user-role">You are logged in as: <strong>{user?.user_type}</strong></p>
+      <div className="page-header">
+        <h1>Dashboard</h1>
+        <p>Welcome to Hydrological Data Management System</p>
       </div>
-      {error && <div className="alert alert-error">{error}</div>}
-      {loading ? (
-        <div className="spinner"></div>
-      ) : (
-        <div className="grid">
-          <div className="stats-card"><h3>Total Stations</h3><div className="value">{stats.totalStations}</div></div>
-          <div className="stats-card"><h3>Hydrological Records</h3><div className="value">{stats.totalRecords}</div></div>
-          {(user?.user_type === 'Admin' || user?.user_type === 'Manager') && <div className="stats-card"><h3>Total Users</h3><div className="value">{stats.totalUsers}</div></div>}
+
+      {error && <div className="error">{error}</div>}
+
+      <div className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-icon">📍</div>
+          <div className="stat-content">
+            <h3>Total Stations</h3>
+            <p className="stat-value">{stats.totalStations}</p>
+          </div>
         </div>
-      )}
-      <div className="card dashboard-info">
-        <h2>📊 Dashboard Overview</h2>
-        <p>Welcome to the Hydrological Data Management Dashboard. Here you can:</p>
-        <ul>
-          <li>View and manage water stations</li>
-          <li>Access hydrological data for each station</li>
-          <li>Track water levels, inflow, and outflow</li>
-          {user?.user_type === 'Admin' && <li>Upload bulk data and manage users</li>}
-          {user?.user_type === 'Manager' && <li>Manage users and monitor data</li>}
-        </ul>
+
+        <div className="stat-card">
+          <div className="stat-icon">📊</div>
+          <div className="stat-content">
+            <h3>Total Records</h3>
+            <p className="stat-value">{stats.totalRecords}</p>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">💧</div>
+          <div className="stat-content">
+            <h3>Avg Water Level</h3>
+            <p className="stat-value">{stats.averageWaterLevel} m</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="info-section">
+        <h2>Quick Start</h2>
+        <div className="info-cards">
+          <div className="info-card">
+            <h4>🗺️ View Stations Map</h4>
+            <p>View all water stations on an interactive map with detailed information about each station.</p>
+            <a href="/stations" className="info-link">Go to Stations Map →</a>
+          </div>
+          <div className="info-card">
+            <h4>🔮 Predict Data</h4>
+            <p>Use machine learning to predict hydrological data for the next day based on historical trends.</p>
+            <a href="/predict" className="info-link">Go to Prediction →</a>
+          </div>
+        </div>
       </div>
     </div>
   );

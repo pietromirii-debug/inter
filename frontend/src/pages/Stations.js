@@ -1,67 +1,176 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import api from '../api/axios';
+import axios from 'axios';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import './Stations.css';
+
+// Fix Leaflet marker icons
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
+  iconUrl: require('leaflet/dist/images/marker-icon.png'),
+  shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
+});
 
 function Stations() {
   const [stations, setStations] = useState([]);
-  const [filteredStations, setFilteredStations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedStation, setSelectedStation] = useState(null);
+  const [stationDetails, setStationDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   useEffect(() => {
     fetchStations();
   }, []);
 
-  useEffect(() => {
-    setFilteredStations(stations.filter(station => station.StationName.toLowerCase().includes(searchTerm.toLowerCase())));
-  }, [searchTerm, stations]);
-
   const fetchStations = async () => {
     try {
-      setLoading(true);
-      const response = await api.get('/stations');
+      const token = localStorage.getItem('access_token');
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const response = await axios.get('http://localhost:5000/stations', { headers });
       setStations(response.data);
+      setError('');
     } catch (err) {
-      setError('Failed to load stations');
+      setError('Failed to load stations. Please try again.');
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchStationDetails = async (stationId) => {
+    setDetailsLoading(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const response = await axios.get(`http://localhost:5000/stations/${stationId}`, { headers });
+      setStationDetails(response.data);
+    } catch (err) {
+      console.error('Failed to load station details:', err);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const handleMarkerClick = (station) => {
+    setSelectedStation(station.Id);
+    fetchStationDetails(station.Id);
+  };
+
+  const parseCoordinates = (coordString) => {
+    if (!coordString) return [30.0, 100.0]; // Default to China center
+    try {
+      const [lat, lng] = coordString.split(',').map((c) => parseFloat(c.trim()));
+      return [lat, lng];
+    } catch {
+      return [30.0, 100.0];
+    }
+  };
+
+  if (loading) return <div className="loading">Loading stations...</div>;
+
   return (
-    <div className="container">
-      <div className="page-header">
-        <h1>🏗️ Water Stations</h1>
-        <button className="btn btn-primary" onClick={fetchStations}>Refresh</button>
+    <div className="stations-page">
+      <div className="stations-header">
+        <h1>Water Stations Map</h1>
+        <p>Click on any marker to view station details</p>
       </div>
-      {error && <div className="alert alert-error">{error}</div>}
-      <div className="search-box">
-        <input type="text" placeholder="Search stations by name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-      </div>
-      {loading ? (
-        <div className="spinner"></div>
-      ) : filteredStations.length === 0 ? (
-        <div className="alert alert-info">No stations found</div>
-      ) : (
-        <div className="card">
-          <table className="table">
-            <thead><tr><th>ID</th><th>Station Name</th><th>Action</th></tr></thead>
-            <tbody>
-              {filteredStations.map((station) => (
-                <tr key={station.Id}>
-                  <td>{station.Id}</td>
-                  <td>{station.StationName}</td>
-                  <td><Link to={`/stations/${station.Id}`} className="btn btn-primary btn-sm">View Details</Link></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+      {error && <div className="error">{error}</div>}
+
+      <div className="stations-container">
+        <div className="map-container">
+          {stations.length > 0 ? (
+            <MapContainer center={[30.0, 100.0]} zoom={5} className="leaflet-map">
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              />
+              {stations.map((station) => {
+                const [lat, lng] = parseCoordinates(station.LongitudeLatitude);
+                return (
+                  <Marker
+                    key={station.Id}
+                    position={[lat, lng]}
+                    onClick={() => handleMarkerClick(station)}
+                    icon={selectedStation === station.Id ? createSelectedIcon() : L.Icon.Default.prototype._getIcon()}
+                  >
+                    <Popup>
+                      <div className="popup-content">
+                        <h3>{station.StationName}</h3>
+                        <p><strong>Water Level:</strong> {station.WaterLevel ? `${station.WaterLevel} m` : 'N/A'}</p>
+                        <p><strong>Province:</strong> {station.Province || 'N/A'}</p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
+            </MapContainer>
+          ) : (
+            <div className="no-data">No stations available</div>
+          )}
         </div>
-      )}
+
+        <div className="details-panel">
+          {selectedStation && stationDetails ? (
+            <div className="station-details">
+              <h2>{stationDetails.StationName}</h2>
+              <div className="details-grid">
+                <div className="detail-item">
+                  <label>Water Level</label>
+                  <p>{stationDetails.WaterLevel ? `${stationDetails.WaterLevel} m` : 'N/A'}</p>
+                </div>
+                <div className="detail-item">
+                  <label>Normal Pool Level</label>
+                  <p>{stationDetails.NormalPoolLevel ? `${stationDetails.NormalPoolLevel} m` : 'N/A'}</p>
+                </div>
+                <div className="detail-item">
+                  <label>Flood Control Level</label>
+                  <p>{stationDetails.FloodControlLevel ? `${stationDetails.FloodControlLevel} m` : 'N/A'}</p>
+                </div>
+                <div className="detail-item">
+                  <label>Installed Capacity</label>
+                  <p>{stationDetails.InstalledCapacity ? `${stationDetails.InstalledCapacity} MW` : 'N/A'}</p>
+                </div>
+                <div className="detail-item">
+                  <label>Regulation Type</label>
+                  <p>{stationDetails.RegulationType || 'N/A'}</p>
+                </div>
+                <div className="detail-item">
+                  <label>Province</label>
+                  <p>{stationDetails.Province || 'N/A'}</p>
+                </div>
+                <div className="detail-item full-width">
+                  <label>Parent Organization</label>
+                  <p>{stationDetails.ParentOrganization || 'N/A'}</p>
+                </div>
+                <div className="detail-item full-width">
+                  <label>Coordinates</label>
+                  <p>{stationDetails.LongitudeLatitude || 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="no-selection">
+              <p>👈 Click on a marker to view station details</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
+}
+
+function createSelectedIcon() {
+  return L.icon({
+    iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNSIgaGVpZ2h0PSI0MSIgdmlld0JveD0iMCAwIDI1IDQxIj48cGF0aCBmaWxsPSIjMzQ5OGRiIiBkPSJNMTIuNSAwQzUuNiAwIDAgNS42IDAgMTIuNWMwIDEyLjUgMTIuNSAyOC4xIDEyLjUgMjguMXMxMi41LTE1LjYgMTIuNS0yOC4xQzI1IDUuNiAxOS40IDAgMTIuNSAweiIvPjwvc3ZnPg==',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+  });
 }
 
 export default Stations;
