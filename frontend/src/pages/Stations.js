@@ -1,16 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import './Stations.css';
 
 // Fix Leaflet marker icons
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
-  iconUrl: require('leaflet/dist/images/marker-icon.png'),
-  shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
+const DefaultIcon = L.icon({
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
 });
+
+const SelectedIcon = L.icon({
+  iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNSIgaGVpZ2h0PSI0MSIgdmlld0JveD0iMCAwIDI1IDQxIj48cGF0aCBmaWxsPSIjMzQ5OGRiIiBkPSJNMTIuNSAwQzUuNiAwIDAgNS42IDAgMTIuNWMwIDEyLjUgMTIuNSAyOC4xIDEyLjUgMjguMXMxMi41LTE1LjYgMTIuNS0yOC4xQzI1IDUuNiAxOS40IDAgMTIuNSAweiIvPjwvc3ZnPg==',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
+
+L.Marker.prototype.setIcon(DefaultIcon);
 
 function Stations() {
   const [stations, setStations] = useState([]);
@@ -91,12 +105,15 @@ function Stations() {
               />
               {stations.map((station) => {
                 const [lat, lng] = parseCoordinates(station.LongitudeLatitude);
+                const isSelected = selectedStation === station.Id;
                 return (
                   <Marker
                     key={station.Id}
                     position={[lat, lng]}
-                    onClick={() => handleMarkerClick(station)}
-                    icon={selectedStation === station.Id ? createSelectedIcon() : L.Icon.Default.prototype._getIcon()}
+                    icon={isSelected ? SelectedIcon : DefaultIcon}
+                    eventHandlers={{
+                      click: () => handleMarkerClick(station),
+                    }}
                   >
                     <Popup>
                       <div className="popup-content">
@@ -162,15 +179,6 @@ function Stations() {
       </div>
     </div>
   );
-}
-
-function createSelectedIcon() {
-  return L.icon({
-    iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNSIgaGVpZ2h0PSI0MSIgdmlld0JveD0iMCAwIDI1IDQxIj48cGF0aCBmaWxsPSIjMzQ5OGRiIiBkPSJNMTIuNSAwQzUuNiAwIDAgNS42IDAgMTIuNWMwIDEyLjUgMTIuNSAyOC4xIDEyLjUgMjguMXMxMi41LTE1LjYgMTIuNS0yOC4xQzI1IDUuNiAxOS40IDAgMTIuNSAweiIvPjwvc3ZnPg==',
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-  });
 }
 
 export default Stations;
