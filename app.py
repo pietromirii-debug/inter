@@ -14,11 +14,14 @@ from flask_jwt_extended import (
     get_jwt, verify_jwt_in_request
 )
 from passlib.context import CryptContext
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, date
 from functools import wraps
 import os
 import logging
 from flask import Flask, request, jsonify, make_response
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -265,8 +268,20 @@ def get_stations():
         if request.args.get('InstalledCapacity'):
             query = query.filter(Station.InstalledCapacity == request.args['InstalledCapacity'])
 
-        stations = query.with_entities(Station.Id, Station.StationName).all()
-        result = [{'Id': s.Id, 'StationName': s.StationName} for s in stations]
+        stations = query.all()
+        result = [{
+            'Id': s.Id, 
+            'StationName': s.StationName,
+            'WaterLevel': float(s.WaterLevel) if s.WaterLevel else None,
+            'NormalPoolLevel': float(s.NormalPoolLevel) if s.NormalPoolLevel else None,
+            'FloodControlLevel': float(s.FloodControlLevel) if s.FloodControlLevel else None,
+            'InstalledCapacity': float(s.InstalledCapacity) if s.InstalledCapacity else None,
+            'RegulationType': s.RegulationType,
+            'Province': s.Province,
+            'ParentOrganization': s.ParentOrganization,
+            'LongitudeLatitude': s.LongitudeLatitude,
+            'CreationTime': s.CreationTime.isoformat() if s.CreationTime else None
+        } for s in stations]
         return jsonify(result), 200
     
     except Exception as e:
@@ -379,7 +394,7 @@ def get_hydrological_by_station(stationId):
         return '', 204
     
     try:
-        records = HydrologicalData.query.filter_by(StationId=stationId).all()
+        records = HydrologicalData.query.filter_by(StationId=stationId).order_by(HydrologicalData.RecordDate).all()
         result = [{
             'Id': r.Id,
             'StationId': r.StationId,
@@ -395,6 +410,93 @@ def get_hydrological_by_station(stationId):
     except Exception as e:
         logger.error(f"Error fetching hydrological by station: {str(e)}")
         return jsonify({'msg': 'Error fetching hydrological records', 'error': str(e)}), 500
+
+# ==================== Prediction Endpoint ====================
+@app.route('/predict/hydrological/<int:stationId>', methods=['POST', 'OPTIONS'])
+@requires_user_type('Admin', 'Manager', 'Normal')
+def predict_hydrological_data(stationId):
+    """Predict hydrological data for the next day using linear regression"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    try:
+        # Get the number of past days to use for training (default: 30)
+        data = request.get_json() or {}
+        days_to_predict = data.get('days_to_predict', 1)
+        training_days = data.get('training_days', 30)
+        
+        # Fetch historical data
+        records = HydrologicalData.query.filter_by(StationId=stationId)\
+            .order_by(HydrologicalData.RecordDate.desc())\
+            .limit(training_days)\
+            .all()
+        
+        if not records:
+            return jsonify({'msg': 'No historical data available for this station'}), 404
+        
+        # Reverse to get chronological order
+        records = list(reversed(records))
+        
+        if len(records) < 2:
+            return jsonify({'msg': 'Insufficient historical data for prediction (need at least 2 records)'}), 400
+        
+        # Extract values
+        dates = [r.RecordDate for r in records]
+        water_levels = np.array([float(r.ReservoirWaterLevel) if r.ReservoirWaterLevel else 0 for r in records]).reshape(-1, 1)
+        inbound_flows = np.array([float(r.InboundFlow) if r.InboundFlow else 0 for r in records]).reshape(-1, 1)
+        outbound_flows = np.array([float(r.OutboundFlow) if r.OutboundFlow else 0 for r in records]).reshape(-1, 1)
+        storage_capacity = np.array([float(r.WaterStorageCapacity) if r.WaterStorageCapacity else 0 for r in records]).reshape(-1, 1)
+        
+        # Create time-based features (days since start)
+        X = np.arange(len(records)).reshape(-1, 1).astype(float)
+        
+        # Train models for each metric
+        models = {}
+        scaler = StandardScaler()
+        
+        for metric_name, metric_data in [
+            ('ReservoirWaterLevel', water_levels),
+            ('InboundFlow', inbound_flows),
+            ('OutboundFlow', outbound_flows),
+            ('WaterStorageCapacity', storage_capacity)
+        ]:
+            model = LinearRegression()
+            X_scaled = scaler.fit_transform(X)
+            model.fit(X_scaled, metric_data.ravel())
+            models[metric_name] = (model, scaler)
+        
+        # Generate predictions
+        predictions = []
+        last_date = dates[-1]
+        
+        for day_offset in range(1, days_to_predict + 1):
+            next_date = last_date + timedelta(days=day_offset)
+            X_future = np.array([[len(records) + day_offset - 1]])
+            
+            pred = {}
+            for metric_name, (model, scaler) in models.items():
+                X_scaled = scaler.transform(X_future)
+                predicted_value = max(0, float(model.predict(X_scaled)[0]))  # Ensure non-negative
+                pred[metric_name] = round(predicted_value, 4)
+            
+            predictions.append({
+                'RecordDate': next_date.isoformat(),
+                'ReservoirWaterLevel': pred['ReservoirWaterLevel'],
+                'InboundFlow': pred['InboundFlow'],
+                'OutboundFlow': pred['OutboundFlow'],
+                'WaterStorageCapacity': pred['WaterStorageCapacity'],
+                'ConfidenceLevel': 'medium'  # Could be enhanced with actual confidence metrics
+            })
+        
+        return jsonify({
+            'StationId': stationId,
+            'TrainingDataPoints': len(records),
+            'Predictions': predictions
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error in hydrological prediction: {str(e)}")
+        return jsonify({'msg': 'Prediction failed', 'error': str(e)}), 500
 
 # ==================== Admin: Bulk Upload Endpoints ====================
 @app.route('/admin/stations/bulk', methods=['POST', 'OPTIONS'])
